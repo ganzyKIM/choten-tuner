@@ -29,11 +29,13 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -54,6 +56,13 @@ import com.dobedub.chotentuner.ui.TunerScreen
 import com.dobedub.chotentuner.ui.theme.AmeDark
 import com.dobedub.chotentuner.ui.theme.ChotenLight
 import com.dobedub.chotentuner.ui.theme.LocalRetro
+import kotlinx.coroutines.delay
+
+/**
+ * Shared height of the 튜너 / 소리내기 panels — sized between what each needs
+ * so switching tabs never moves the layout below.
+ */
+private val MODE_CONTENT_HEIGHT = 352.dp
 
 class MainActivity : ComponentActivity() {
 
@@ -126,12 +135,22 @@ fun ChotenTunerApp(
     val tonePlaying by vm.tonePlaying.collectAsState()
     val settingsOpen by vm.settingsOpen.collectAsState()
     val transientLine by vm.transientLine.collectAsState()
+    val transientSprite by vm.transientSprite.collectAsState()
 
     val r = reading
-    val bucket = Dialogue.bucketFor(micGranted, mode, r, tonePlaying)
-    val baseLine = remember(bucket, dark) { Dialogue.linesFor(bucket, dark).random() }
+    val bucket = Dialogue.bucketFor(micGranted, mode, r, tonePlaying, toneMidi)
+
+    // The gauge reacts instantly, but the mascot waits for the situation to settle
+    // so she doesn't flicker between poses while a note drifts across a threshold.
+    var settledBucket by remember { mutableStateOf(bucket) }
+    LaunchedEffect(bucket) {
+        delay(400)
+        settledBucket = bucket
+    }
+
+    val baseLine = remember(settledBucket, dark) { Dialogue.linesFor(settledBucket, dark).random() }
     val line = transientLine ?: baseLine
-    val mood = Dialogue.moodFor(micGranted, mode, r, tonePlaying)
+    val sprite = transientSprite ?: Dialogue.spriteFor(settledBucket)
 
     Box(Modifier.fillMaxSize()) {
         Checkerboard(Modifier.fillMaxSize())
@@ -187,13 +206,16 @@ fun ChotenTunerApp(
 
                     Spacer(Modifier.height(12.dp))
 
+                    // Both modes occupy the same height so the window never resizes
+                    // when you switch tabs — the mascot below keeps her size.
+                    val modeArea = Modifier.fillMaxWidth().height(MODE_CONTENT_HEIGHT)
                     when (mode) {
                         AppMode.TUNER -> TunerScreen(
                             reading = r,
                             micGranted = micGranted,
                             onRequestMic = onRequestMic,
                             a4 = a4,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = modeArea,
                         )
                         AppMode.TONE -> ToneScreen(
                             toneMidi = toneMidi,
@@ -202,7 +224,7 @@ fun ChotenTunerApp(
                             onSelect = vm::selectTone,
                             onToggle = vm::toggleTone,
                             onOctave = vm::shiftOctave,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = modeArea,
                         )
                     }
 
@@ -211,9 +233,11 @@ fun ChotenTunerApp(
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
             CharacterZone(
                 dark = dark,
-                mood = mood,
+                sprite = sprite,
                 onPoke = vm::pokeCharacter,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )

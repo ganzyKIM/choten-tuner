@@ -46,9 +46,13 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
     private val _settingsOpen = MutableStateFlow(false)
     val settingsOpen: StateFlow<Boolean> = _settingsOpen.asStateFlow()
 
-    /** One-shot mascot line (poke / transformation); overrides the state line briefly. */
+    /** One-shot mascot reaction (poke / transformation); overrides the state pose+line briefly. */
     private val _transientLine = MutableStateFlow<String?>(null)
     val transientLine: StateFlow<String?> = _transientLine.asStateFlow()
+
+    private val _transientSprite = MutableStateFlow<Sprite?>(null)
+    val transientSprite: StateFlow<Sprite?> = _transientSprite.asStateFlow()
+
     private var blurtJob: Job? = null
 
     private val engine = TunerEngine()
@@ -150,17 +154,19 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
         val next = !_dark.value
         _dark.value = next
         prefs.edit().putBoolean("dark", next).apply()
-        blurt(Dialogue.transformLines(next).random())
+        blurt(Dialogue.transformLines(next).random(), Sprite.JOY)
     }
 
-    fun pokeCharacter() = blurt(Dialogue.pokeLines(_dark.value).random())
+    fun pokeCharacter() = blurt(Dialogue.pokeLines(_dark.value).random(), Sprite.SHY)
 
-    private fun blurt(line: String) {
+    private fun blurt(line: String, sprite: Sprite) {
         _transientLine.value = line
+        _transientSprite.value = sprite
         blurtJob?.cancel()
         blurtJob = viewModelScope.launch {
             delay(4000)
             _transientLine.value = null
+            _transientSprite.value = null
         }
     }
 

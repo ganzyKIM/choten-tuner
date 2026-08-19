@@ -47,7 +47,7 @@ fun TunerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!micGranted) {
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.weight(1f))
             PixelText(
                 "마이크 권한이 없으면\n초텐짱이 못 들어~ ㅠㅠ",
                 fontSize = 13.sp,
@@ -60,17 +60,17 @@ fun TunerScreen(
             }
             Spacer(Modifier.height(10.dp))
             PixelText("안 뜨면 설정 앱 > 권한에서 켜줘!", fontSize = 9.sp, color = palette.textMuted)
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.weight(1f))
         } else {
             val inTune = reading != null && abs(reading.cents) <= 5.0
 
-            Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
                 if (inTune) {
                     PixelText("☆ PERFECT! ☆", fontSize = 13.sp, color = palette.mintDeep, bold = true)
                 }
             }
 
-            Box(Modifier.height(96.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.height(92.dp), contentAlignment = Alignment.Center) {
                 if (reading != null) {
                     val noteColor = if (inTune) palette.mintDeep else palette.text
                     Row(verticalAlignment = Alignment.Bottom) {
@@ -103,7 +103,11 @@ fun TunerScreen(
                 color = palette.textMuted,
             )
 
+            Spacer(Modifier.weight(1f))
+
             CentsGauge(cents = reading?.cents, inTune = inTune)
+
+            Spacer(Modifier.weight(1f))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -144,10 +148,10 @@ fun CentsGauge(cents: Double?, inTune: Boolean, modifier: Modifier = Modifier) {
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(fontFamily = PixelFont, fontSize = 9.sp, color = palette.border)
 
-    Canvas(modifier = modifier.fillMaxWidth().height(172.dp)) {
+    Canvas(modifier = modifier.fillMaxWidth().height(150.dp)) {
         val cx = size.width / 2f
-        val cy = size.height - 14.dp.toPx()
-        val r = minOf(size.width / 2f - 36.dp.toPx(), size.height - 52.dp.toPx())
+        val cy = size.height - 10.dp.toPx()
+        val r = minOf(size.width / 2f - 36.dp.toPx(), size.height - 44.dp.toPx())
 
         fun deg(c: Float) = (c / 50f) * 55f - 90f
 

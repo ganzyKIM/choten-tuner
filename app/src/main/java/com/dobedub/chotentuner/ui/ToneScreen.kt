@@ -44,17 +44,17 @@ fun ToneScreen(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        RetroPanel(Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+        RetroPanel(Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     PixelText(
                         NoteMath.NOTE_NAMES[idx],
-                        fontSize = 34.sp,
+                        fontSize = 30.sp,
                         bold = true,
                         color = if (playing) palette.pinkDeep else palette.text,
                     )
                     Spacer(Modifier.width(4.dp))
-                    PixelText("$octave", fontSize = 18.sp, color = palette.textMuted)
+                    PixelText("$octave", fontSize = 16.sp, color = palette.textMuted)
                 }
                 PixelText(
                     "${NoteMath.SOLFEGE[idx]} · ${String.format(Locale.US, "%.2f", freq)} Hz",
@@ -83,7 +83,7 @@ fun ToneScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.weight(1f))
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -110,14 +110,14 @@ fun ToneScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.weight(1f))
 
         val baseMidi = (toneMidi / 12) * 12
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             (0 until 12).chunked(4).forEach { rowNotes ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     rowNotes.forEach { i ->
                         val isBlack = NoteMath.NOTE_NAMES[i].length > 1
@@ -136,7 +136,7 @@ fun ToneScreen(
                             onClick = { onSelect(baseMidi + i) },
                             background = bg,
                             contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.weight(1f).height(52.dp),
+                            modifier = Modifier.weight(1f).height(46.dp),
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 PixelText(
@@ -157,17 +157,17 @@ fun ToneScreen(
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.weight(1f))
 
         RetroButton(
             onClick = onToggle,
             background = if (playing) palette.pinkDeep else palette.mint,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(44.dp),
             contentPadding = PaddingValues(0.dp),
         ) {
             PixelText(
                 if (playing) "■ 그만!" else "▶ 소리내기!",
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 bold = true,
             )
         }

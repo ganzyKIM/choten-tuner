@@ -3,34 +3,36 @@ package com.dobedub.chotentuner
 import com.dobedub.chotentuner.music.NoteReading
 import kotlin.math.abs
 
-enum class CharacterMood { IDLE, PERFECT, OFF, SING, SHOCK }
+/**
+ * Which pose the mascot strikes. Each persona maps these to its own artwork
+ * (see CharacterZone), so the situation drives the expression for both forms.
+ */
+enum class Sprite { NEUTRAL, JOY, SHARP, FLAT, SHY, DARK }
 
 /**
- * All of the mascot's lines. Two personas: the loud angel streamer
- * 초텐짱 (light mode) and quiet 아메 (dark mode).
+ * All of the mascot's lines and poses. Two personas: the loud angel streamer
+ * 초텐짱 (light form) and quiet 아메 (dark form).
  */
 object Dialogue {
 
-    fun moodFor(
-        micGranted: Boolean,
-        mode: AppMode,
-        reading: NoteReading?,
-        tonePlaying: Boolean,
-    ): CharacterMood = when {
-        mode == AppMode.TUNER && !micGranted -> CharacterMood.SHOCK
-        mode == AppMode.TUNER && reading == null -> CharacterMood.IDLE
-        mode == AppMode.TUNER && abs(reading!!.cents) <= 5.0 -> CharacterMood.PERFECT
-        mode == AppMode.TUNER -> CharacterMood.OFF
-        tonePlaying -> CharacterMood.SING
-        else -> CharacterMood.IDLE
+    /**
+     * Tone colour of a single pitch, by its interval above C:
+     * perfect intervals read as plain, major ones bright, minor ones and the
+     * tritone dark. Drives both the pose and the line in 소리내기 mode.
+     */
+    fun toneQuality(midi: Int): String = when (((midi % 12) + 12) % 12) {
+        0, 5, 7 -> "plain"       // C, F, G — 완전음정
+        2, 4, 9, 11 -> "bright"  // D, E, A, B — 장음정
+        else -> "dark"           // C#, D#, F#, G#, A# — 단음정 + 트라이톤
     }
 
-    /** Stable key describing the current situation; a line is drawn per bucket change. */
+    /** Stable key describing the current situation; pose and line follow from it. */
     fun bucketFor(
         micGranted: Boolean,
         mode: AppMode,
         reading: NoteReading?,
         tonePlaying: Boolean,
+        toneMidi: Int,
     ): String = when {
         mode == AppMode.TUNER && !micGranted -> "no_perm"
         mode == AppMode.TUNER && reading == null -> "tuner_idle"
@@ -44,8 +46,16 @@ object Dialogue {
                 else -> "high"
             }
         }
-        tonePlaying -> "tone_play"
+        tonePlaying -> "tone_" + toneQuality(toneMidi)
         else -> "tone_idle"
+    }
+
+    fun spriteFor(bucket: String): Sprite = when (bucket) {
+        "perfect", "tone_bright" -> Sprite.JOY
+        "low", "low_big" -> Sprite.FLAT
+        "high", "high_big", "no_perm" -> Sprite.SHARP
+        "tone_dark" -> Sprite.DARK
+        else -> Sprite.NEUTRAL
     }
 
     fun linesFor(bucket: String, dark: Boolean): List<String> =
@@ -59,73 +69,110 @@ object Dialogue {
         "no_perm" to listOf(
             "마이크 권한이 있어야 들을 수 있어! 부탁해 P~!",
             "권한 버튼 눌러줘! 지금 귀 막힌 상태야 ㅠㅠ",
+            "안 들려안 들려! 이래선 방송 못 한다구!",
         ),
         "tuner_idle" to listOf(
             "소리 들려줘~ 초텐짱이 듣고 있어! ♪",
             "P의 연주 기다리는 중~ 두근두근☆",
             "튜닝 타임! 자신있게 소리내봐~!",
+            "귀 쫑긋 세우고 대기중이야! 언제든 오케이~",
         ),
         "low_big" to listOf(
             "삐용삐용! 많이 낮아~ 팍 감아올려!",
             "으엥, 한참 낮잖아! 힘내라 P!",
+            "너무 낮아!! 지하실까지 내려갔어~!",
         ),
         "low" to listOf(
             "쪼~금 낮아! 살짝만 올려봐~",
             "아깝다! 요만~큼만 위로!",
+            "거의 다 왔어! 아주 살짝 올려~",
         ),
         "high" to listOf(
             "쪼~금 높아! 살짝만 내려봐~",
             "아깝! 요만~큼만 아래로!",
+            "다 왔는데! 아주 조금만 내려봐~",
         ),
         "high_big" to listOf(
             "꺄앗! 너무 높아!! 풀어줘 풀어줘~!",
             "높아높아! 살살 풀어보자~",
+            "우주까지 날아갔어! 진정해 P!",
         ),
         "perfect" to listOf(
             "완벽해--☆ 역시 P는 천재야!",
             "딱 맞췄어! 천사 인증~☆",
             "그거야 그거!! 최고의 소리잖아?!",
+            "짜자잔-! 완벽한 음정 완성~!",
+            "우와아! 소름돋았어! 이게 프로구나~☆",
         ),
         "tone_idle" to listOf(
             "듣고 싶은 음 눌러봐! 바로 내줄게~",
             "초텐짱 방송 준비 완료! 리퀘스트 받는다~☆",
+            "어떤 음이 좋아? 뭐든 말만 해!",
         ),
-        "tone_play" to listOf(
-            "초텐짱 라이브 방송 중~ ♪♫",
-            "이 음이야 이 음! 잘 들어봐~",
-            "따라 불러도 돼! 같이 가보자고~",
+        "tone_bright" to listOf(
+            "우와~ 밝고 예쁜 음이다! 기분 좋아져~☆",
+            "이거 완전 상큼한 소리! 텐션 올라간다구~!",
+            "반짝반짝한 음이야! 초텐짱이랑 딱이네~♪",
+        ),
+        "tone_dark" to listOf(
+            "오~ 좀 어른스러운 음이네~ 시크해...",
+            "쓸쓸한 소리다... 이런 것도 나쁘지 않지?",
+            "묘하게 아련한 음이야... 감성 폭발~",
+        ),
+        "tone_plain" to listOf(
+            "탄탄한 기준음이야! 여기서부터 시작~♪",
+            "딱 중심 잡아주는 음! 든든하지~?",
+            "기본에 충실한 소리! 튜닝의 뼈대라구~☆",
         ),
     )
 
     private val ame = mapOf(
         "no_perm" to listOf(
             "...마이크 권한이 없으면 아무것도 안 들려.",
+            "귀를 막아둔 채로 뭘 하라는 거야.",
         ),
         "tuner_idle" to listOf(
             "...소리, 들려줘. 듣고 있으니까.",
             "연주해 줘. ...기다릴게.",
+            "...조용하네. 나쁘지 않지만.",
         ),
         "low_big" to listOf(
             "많이 낮아. ...더 감아.",
+            "한참 낮아. ...제대로 좀 해.",
         ),
         "low" to listOf(
             "...조금 낮아. 올려봐.",
+            "아깝네. ...조금만 더.",
         ),
         "high" to listOf(
             "...조금 높아. 내려봐.",
+            "거의 다 왔어. ...살짝만.",
         ),
         "high_big" to listOf(
             "너무 높아. ...풀어줘.",
+            "그렇게 조이면... 끊어져 버려.",
         ),
         "perfect" to listOf(
             "...딱 맞아. 대단하네, P.",
             "완벽. ...조금 감동했어.",
+            "...이런 소리, 계속 듣고 싶어.",
         ),
         "tone_idle" to listOf(
             "...원하는 음, 눌러.",
+            "뭐든 내줄게. ...말만 해.",
         ),
-        "tone_play" to listOf(
-            "...흘러나오는 중. 잘 들어.",
+        "tone_bright" to listOf(
+            "...밝은 음이네. 눈부셔.",
+            "이런 소리는... 조금 부끄러워.",
+        ),
+        "tone_dark" to listOf(
+            "...이 음, 좋아해. 어둡고 깊어서.",
+            "가라앉는 소리... 머리 속이 조용해져.",
+            "...계속 울리게 둘게.",
+        ),
+        "tone_plain" to listOf(
+            "...흔들림 없는 음이야.",
+            "기준이 되는 소리. ...여기 기대도 돼.",
         ),
     )
 
@@ -135,6 +182,7 @@ object Dialogue {
         "P~ 나 귀엽지? 솔직해도 돼!",
         "머리 쓰다듬는 거야? 에헤헤~",
         "구독 좋아요 알림설정! ...아, 여긴 앱이었지?",
+        "에헤헤~ 더 해줘도 되는데~?",
     )
 
     private val amePoke = listOf(
@@ -142,6 +190,7 @@ object Dialogue {
         "만지지 마. ...조금은 괜찮지만.",
         "...P는 이상해. (싫지 않아)",
         "지금은 이 모습이 편해.",
+        "...따뜻하네. 조금만 더 있어줘.",
     )
 
     private val toDarkLines = listOf(

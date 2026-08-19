@@ -24,31 +24,56 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.dobedub.chotentuner.CharacterMood
 import com.dobedub.chotentuner.R
+import com.dobedub.chotentuner.Sprite
 import com.dobedub.chotentuner.ui.theme.LocalRetro
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.sin
 
-private const val BUST_ASPECT = 500f / 510f
+/** Bust artwork is cropped to 400x350. */
+private const val BUST_ASPECT = 400f / 350f
+
+/** How much bigger than a plain fit-to-width the bust is drawn. */
+private const val BUST_ZOOM = 1.15f
+
+private fun drawableFor(sprite: Sprite, dark: Boolean): Int = if (dark) {
+    when (sprite) {
+        Sprite.NEUTRAL -> R.drawable.ame_default
+        Sprite.JOY -> R.drawable.ame_dere
+        Sprite.SHARP -> R.drawable.ame_yandere
+        Sprite.FLAT -> R.drawable.ame_smoking
+        Sprite.SHY -> R.drawable.ame_dere
+        Sprite.DARK -> R.drawable.ame_drug
+    }
+} else {
+    when (sprite) {
+        Sprite.NEUTRAL -> R.drawable.choten_default
+        Sprite.JOY -> R.drawable.choten_peace
+        Sprite.SHARP -> R.drawable.choten_angry
+        Sprite.FLAT -> R.drawable.choten_vape
+        Sprite.SHY -> R.drawable.choten_dere
+        Sprite.DARK -> R.drawable.choten_vape
+    }
+}
 
 /**
- * The mascot area under the main window: the character bust peeks from the
- * bottom edge of the screen, gently animated according to the app state.
- * Tapping her makes her talk (via the dialogue window).
+ * The mascot area under the main window: her bust peeks up from the bottom of
+ * the screen, posed and animated to match what the app is doing.
+ * Tapping her makes her talk (through the shared dialogue window).
  */
 @Composable
 fun CharacterZone(
     dark: Boolean,
-    mood: CharacterMood,
+    sprite: Sprite,
     onPoke: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalRetro.current
     BoxWithConstraints(modifier.clipToBounds()) {
-        val bustHeight = min(maxHeight.value, (maxWidth * 0.92f / BUST_ASPECT).value).dp
-        val topPad = (maxHeight - bustHeight).let { if (it > 0.dp) it else 0.dp }
+        val fitted = min(maxHeight.value, (maxWidth / BUST_ASPECT).value)
+        val bustHeight = (fitted * BUST_ZOOM).dp
+        val topPad = (maxHeight - bustHeight).coerceAtLeast(0.dp)
 
         val transition = rememberInfiniteTransition(label = "chara")
         val phase by transition.animateFloat(
@@ -56,28 +81,32 @@ fun CharacterZone(
             targetValue = (2.0 * PI).toFloat(),
             animationSpec = infiniteRepeatable(
                 tween(
-                    durationMillis = when (mood) {
-                        CharacterMood.SING -> 900
-                        CharacterMood.PERFECT -> 1100
-                        else -> 3000
+                    durationMillis = when (sprite) {
+                        Sprite.JOY -> 1000
+                        Sprite.SHY -> 1400
+                        Sprite.SHARP -> 340
+                        Sprite.FLAT -> 4200
+                        Sprite.DARK -> 3600
+                        Sprite.NEUTRAL -> 3000
                     },
                     easing = LinearEasing,
                 ),
             ),
             label = "phase",
         )
-        val bobAmp = when (mood) {
-            CharacterMood.IDLE -> 4f
-            CharacterMood.SING -> 7f
-            CharacterMood.PERFECT -> 6f
-            CharacterMood.OFF -> 2f
-            CharacterMood.SHOCK -> 1f
+        val bobAmp = when (sprite) {
+            Sprite.JOY -> 6f
+            Sprite.SHY -> 4f
+            Sprite.SHARP -> 1.5f
+            Sprite.FLAT -> 3f
+            Sprite.DARK -> 3f
+            Sprite.NEUTRAL -> 4f
         }
-        val wobble = if (mood == CharacterMood.OFF) sin(phase * 2) * 2.2f else 0f
+        val wobble = if (sprite == Sprite.SHARP) sin(phase) * 1.6f else 0f
 
         val interaction = remember { MutableInteractionSource() }
         Image(
-            painter = painterResource(if (dark) R.drawable.ame_bust else R.drawable.choten_bust),
+            painter = painterResource(drawableFor(sprite, dark)),
             contentDescription = if (dark) "아메" else "초텐짱",
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -95,8 +124,8 @@ fun CharacterZone(
                 ),
         )
 
-        if (mood == CharacterMood.PERFECT || mood == CharacterMood.SING) {
-            val symbol = if (mood == CharacterMood.PERFECT) "☆" else "♪"
+        if (sprite == Sprite.JOY || sprite == Sprite.DARK) {
+            val symbol = if (sprite == Sprite.JOY) "☆" else "♪"
             val pulse = (sin(phase) + 1f) / 2f
             PixelText(
                 symbol,
@@ -105,7 +134,7 @@ fun CharacterZone(
                 bold = true,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(x = (-86).dp, y = topPad + 26.dp)
+                    .offset(x = (-96).dp, y = topPad + 22.dp)
                     .alpha(pulse),
             )
             PixelText(
@@ -115,7 +144,7 @@ fun CharacterZone(
                 bold = true,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(x = 90.dp, y = topPad + 54.dp)
+                    .offset(x = 100.dp, y = topPad + 52.dp)
                     .alpha(1f - pulse),
             )
         }
