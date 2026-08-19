@@ -3,6 +3,8 @@ package com.dobedub.chotentuner.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -17,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -25,13 +28,12 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dobedub.chotentuner.music.Instrument
 import com.dobedub.chotentuner.music.NoteReading
 import com.dobedub.chotentuner.ui.theme.LocalRetro
 import com.dobedub.chotentuner.ui.theme.PixelFont
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 @Composable
 fun TunerScreen(
@@ -39,6 +41,8 @@ fun TunerScreen(
     micGranted: Boolean,
     onRequestMic: () -> Unit,
     a4: Int,
+    instrument: Instrument,
+    calibration: Float,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalRetro.current
@@ -70,28 +74,28 @@ fun TunerScreen(
                 }
             }
 
-            Box(Modifier.height(92.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.height(96.dp), contentAlignment = Alignment.Center) {
                 if (reading != null) {
                     val noteColor = if (inTune) palette.mintDeep else palette.text
                     Row(verticalAlignment = Alignment.Bottom) {
                         PixelText(
                             reading.name.first().toString(),
-                            fontSize = 64.sp,
+                            fontSize = 66.sp,
                             color = noteColor,
                             bold = true,
                         )
                         Column {
                             PixelText(
                                 if (reading.name.length > 1) "#" else " ",
-                                fontSize = 25.sp,
+                                fontSize = 26.sp,
                                 color = noteColor,
                                 bold = true,
                             )
-                            PixelText("${reading.octave}", fontSize = 25.sp, color = palette.textMuted)
+                            PixelText("${reading.octave}", fontSize = 26.sp, color = palette.textMuted)
                         }
                     }
                 } else {
-                    PixelText("--", fontSize = 64.sp, color = palette.text.copy(alpha = 0.2f), bold = true)
+                    PixelText("--", fontSize = 66.sp, color = palette.text.copy(alpha = 0.2f), bold = true)
                 }
             }
 
@@ -105,7 +109,7 @@ fun TunerScreen(
 
             Spacer(Modifier.weight(1f))
 
-            CentsGauge(cents = reading?.cents, inTune = inTune)
+            CentsMeter(cents = reading?.cents, inTune = inTune)
 
             Spacer(Modifier.weight(1f))
 
@@ -130,96 +134,132 @@ fun TunerScreen(
             }
 
             Spacer(Modifier.height(6.dp))
-            PixelText("기준 A4 = $a4 Hz", fontSize = 9.sp, color = palette.textMuted)
+            val hint = buildString {
+                append(instrument.label)
+                append(" · A4 ")
+                append(a4)
+                append("Hz")
+                if (calibration != 0f) append(String.format(Locale.US, " · 보정 %+.1fct", calibration))
+                if (instrument.strings.isNotEmpty()) {
+                    append("\n")
+                    append(instrument.stringHint())
+                }
+            }
+            PixelText(
+                hint,
+                fontSize = 9.sp,
+                color = palette.textMuted,
+                textAlign = TextAlign.Center,
+                lineHeight = 15.sp,
+            )
         }
     }
 }
 
-/** Semicircular cents gauge: purple/pink/mint zones, pixel ticks, hard needle. */
+/**
+ * Horizontal cents meter: a boxed scale running flat ♭ on the left through
+ * dead-on in the middle to sharp ♯ on the right, with a pixel needle.
+ */
 @Composable
-fun CentsGauge(cents: Double?, inTune: Boolean, modifier: Modifier = Modifier) {
+fun CentsMeter(cents: Double?, inTune: Boolean, modifier: Modifier = Modifier) {
     val palette = LocalRetro.current
     val needle by animateFloatAsState(
         targetValue = (cents ?: 0.0).toFloat().coerceIn(-50f, 50f),
-        animationSpec = tween(90),
+        animationSpec = tween(110),
         label = "needle",
     )
     val active = cents != null
     val textMeasurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(fontFamily = PixelFont, fontSize = 9.sp, color = palette.border)
+    val labelStyle = TextStyle(fontFamily = PixelFont, fontSize = 9.sp, color = palette.textMuted)
 
-    Canvas(modifier = modifier.fillMaxWidth().height(150.dp)) {
-        val cx = size.width / 2f
-        val cy = size.height - 10.dp.toPx()
-        val r = minOf(size.width / 2f - 36.dp.toPx(), size.height - 44.dp.toPx())
-
-        fun deg(c: Float) = (c / 50f) * 55f - 90f
-
-        val stroke = Stroke(width = 12.dp.toPx())
-        val arcTopLeft = Offset(cx - r, cy - r)
-        val arcSize = Size(r * 2f, r * 2f)
-        fun zone(from: Float, to: Float, color: Color) {
-            drawArc(
-                color = color,
-                startAngle = deg(from),
-                sweepAngle = deg(to) - deg(from),
-                useCenter = false,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                style = stroke,
-            )
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(palette.panel)
+            .border(2.dp, palette.border)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            PixelText("♭ 낮음", fontSize = 10.sp, bold = true, color = palette.textMuted)
+            Spacer(Modifier.weight(1f))
+            PixelText("높음 ♯", fontSize = 10.sp, bold = true, color = palette.textMuted)
         }
-        zone(-50f, -20f, palette.purple)
-        zone(-20f, -5f, palette.pink)
-        zone(-5f, 5f, if (inTune) palette.mintDeep else palette.mint)
-        zone(5f, 20f, palette.pink)
-        zone(20f, 50f, palette.purple)
 
-        for (c in -50..50 step 5) {
-            val major = c % 25 == 0
-            val a = Math.toRadians(deg(c.toFloat()).toDouble())
-            val dirX = cos(a).toFloat()
-            val dirY = sin(a).toFloat()
-            val outer = r - 10.dp.toPx()
-            val inner = outer - (if (major) 12.dp else 7.dp).toPx()
-            drawLine(
+        Spacer(Modifier.height(6.dp))
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(76.dp)
+        ) {
+            val w = size.width
+            val trackTop = 22.dp.toPx()
+            val trackH = 20.dp.toPx()
+            val tickTop = trackTop + trackH + 3.dp.toPx()
+
+            /** cents -> x position across the full width */
+            fun x(c: Float) = (c + 50f) / 100f * w
+
+            // Coloured zones, widest at the extremes and mint in the middle.
+            fun zone(from: Float, to: Float, color: Color) {
+                drawRect(
+                    color = color,
+                    topLeft = Offset(x(from), trackTop),
+                    size = Size(x(to) - x(from), trackH),
+                )
+            }
+            zone(-50f, -20f, palette.purple)
+            zone(-20f, -5f, palette.pink)
+            zone(-5f, 5f, if (inTune) palette.mintDeep else palette.mint)
+            zone(5f, 20f, palette.pink)
+            zone(20f, 50f, palette.purple)
+            drawRect(
                 color = palette.border,
-                start = Offset(cx + dirX * inner, cy + dirY * inner),
-                end = Offset(cx + dirX * outer, cy + dirY * outer),
-                strokeWidth = (if (major) 3.dp else 2.dp).toPx(),
+                topLeft = Offset(0f, trackTop),
+                size = Size(w, trackH),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+            )
+
+            // Counter ticks under the track.
+            for (c in -50..50 step 5) {
+                val major = c % 25 == 0
+                val h = (if (major) 13.dp else 7.dp).toPx()
+                val tw = (if (major) 3.dp else 2.dp).toPx()
+                drawRect(
+                    color = palette.border,
+                    topLeft = Offset(x(c.toFloat()) - tw / 2f, tickTop),
+                    size = Size(tw, h),
+                )
+            }
+
+            for ((c, label) in listOf(-50 to "-50", -25 to "-25", 0 to "0", 25 to "+25", 50 to "+50")) {
+                val measured = textMeasurer.measure(AnnotatedString(label), labelStyle)
+                val cx = (x(c.toFloat()) - measured.size.width / 2f)
+                    .coerceIn(0f, w - measured.size.width)
+                drawText(measured, topLeft = Offset(cx, tickTop + 15.dp.toPx()))
+            }
+
+            // Needle: a pixel arrow sitting on the track, dark until it locks in.
+            val nx = x(needle)
+            val needleColor = when {
+                !active -> palette.border.copy(alpha = 0.25f)
+                inTune -> palette.mintDeep
+                else -> palette.border
+            }
+            val halfW = 7.dp.toPx()
+            val headH = 12.dp.toPx()
+            val head = Path().apply {
+                moveTo(nx, trackTop + headH)
+                lineTo(nx - halfW, trackTop - 4.dp.toPx())
+                lineTo(nx + halfW, trackTop - 4.dp.toPx())
+                close()
+            }
+            drawPath(head, needleColor)
+            drawRect(
+                color = needleColor,
+                topLeft = Offset(nx - 2.dp.toPx(), trackTop),
+                size = Size(4.dp.toPx(), trackH + 3.dp.toPx()),
             )
         }
-
-        for ((c, label) in listOf(-50 to "-50", -25 to "-25", 0 to "0", 25 to "+25", 50 to "+50")) {
-            val a = Math.toRadians(deg(c.toFloat()).toDouble())
-            val lr = r + 16.dp.toPx()
-            val x = cx + cos(a).toFloat() * lr
-            val y = cy + sin(a).toFloat() * lr
-            val measured = textMeasurer.measure(AnnotatedString(label), labelStyle)
-            drawText(
-                measured,
-                topLeft = Offset(x - measured.size.width / 2f, y - measured.size.height / 2f),
-            )
-        }
-
-        val na = Math.toRadians(deg(needle).toDouble())
-        val needleColor = when {
-            !active -> palette.border.copy(alpha = 0.2f)
-            inTune -> palette.mintDeep
-            else -> palette.border
-        }
-        val nLen = r - 26.dp.toPx()
-        drawLine(
-            color = needleColor,
-            start = Offset(cx, cy),
-            end = Offset(cx + cos(na).toFloat() * nLen, cy + sin(na).toFloat() * nLen),
-            strokeWidth = 4.dp.toPx(),
-        )
-        val pivot = 12.dp.toPx()
-        drawRect(
-            color = palette.border,
-            topLeft = Offset(cx - pivot / 2f, cy - pivot / 2f),
-            size = Size(pivot, pivot),
-        )
     }
 }

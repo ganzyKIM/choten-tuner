@@ -136,6 +136,9 @@ fun ChotenTunerApp(
     val settingsOpen by vm.settingsOpen.collectAsState()
     val transientLine by vm.transientLine.collectAsState()
     val transientSprite by vm.transientSprite.collectAsState()
+    val sparkle by vm.sparkle.collectAsState()
+    val instrument by vm.instrument.collectAsState()
+    val calibration by vm.calibration.collectAsState()
 
     val r = reading
     val bucket = Dialogue.bucketFor(micGranted, mode, r, tonePlaying, toneMidi)
@@ -146,6 +149,11 @@ fun ChotenTunerApp(
     LaunchedEffect(bucket) {
         delay(400)
         settledBucket = bucket
+    }
+
+    // Celebrate the moment the note locks in, once per lock.
+    LaunchedEffect(settledBucket) {
+        if (settledBucket == "perfect") vm.celebrate()
     }
 
     val baseLine = remember(settledBucket, dark) { Dialogue.linesFor(settledBucket, dark).random() }
@@ -215,6 +223,8 @@ fun ChotenTunerApp(
                             micGranted = micGranted,
                             onRequestMic = onRequestMic,
                             a4 = a4,
+                            instrument = instrument,
+                            calibration = calibration,
                             modifier = modeArea,
                         )
                         AppMode.TONE -> ToneScreen(
@@ -238,6 +248,7 @@ fun ChotenTunerApp(
             CharacterZone(
                 dark = dark,
                 sprite = sprite,
+                burst = sparkle,
                 onPoke = vm::pokeCharacter,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -246,7 +257,13 @@ fun ChotenTunerApp(
         if (settingsOpen) {
             SettingsOverlay(
                 a4 = a4,
+                calibration = calibration,
+                instrument = instrument,
+                canCalibrateNow = r != null,
                 onA4 = vm::setA4,
+                onCalibration = vm::setCalibration,
+                onCalibrateNow = vm::calibrateFromCurrentReading,
+                onInstrument = vm::setInstrument,
                 onClose = { vm.openSettings(false) },
             )
         }

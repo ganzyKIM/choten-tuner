@@ -6,8 +6,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dobedub.chotentuner.audio.TonePlayer
 import com.dobedub.chotentuner.audio.TunerEngine
+import com.dobedub.chotentuner.music.Instrument
 import com.dobedub.chotentuner.music.NoteMath
 import com.dobedub.chotentuner.music.NoteReading
+import kotlin.math.pow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class AppMode { TUNER, TONE }
+
+/** A one-shot shower of stars around the mascot. */
+data class SparkleBurst(val id: Int, val count: Int)
 
 /** Lowest / highest note offered by the tone generator (C2..B6). */
 private const val TONE_MIN_MIDI = 36
@@ -30,6 +35,13 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _a4 = MutableStateFlow(prefs.getInt("a4", 440))
     val a4: StateFlow<Int> = _a4.asStateFlow()
+
+    /** Microphone calibration in cents; subtracted from every measurement. */
+    private val _calibration = MutableStateFlow(prefs.getFloat("calibration", 0f))
+    val calibration: StateFlow<Float> = _calibration.asStateFlow()
+
+    private val _instrument = MutableStateFlow(Instrument.fromName(prefs.getString("instrument", null)))
+    val instrument: StateFlow<Instrument> = _instrument.asStateFlow()
 
     private val _dark = MutableStateFlow(prefs.getBoolean("dark", false))
     val dark: StateFlow<Boolean> = _dark.asStateFlow()
@@ -53,9 +65,13 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
     private val _transientSprite = MutableStateFlow<Sprite?>(null)
     val transientSprite: StateFlow<Sprite?> = _transientSprite.asStateFlow()
 
+    private val _sparkle = MutableStateFlow(SparkleBurst(0, 0))
+    val sparkle: StateFlow<SparkleBurst> = _sparkle.asStateFlow()
+    private var sparkleId = 0
+
     private var blurtJob: Job? = null
 
-    private val engine = TunerEngine()
+    private val engine = TunerEngine(app)
     private val player = TonePlayer()
 
     // Median-of-3 smoothing plus a short hold so the display doesn't flicker.
@@ -84,13 +100,15 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun onPitch(freq: Float) {
         val now = System.currentTimeMillis()
-        if (freq > 0) {
+        if (freq > 0 && _instrument.value.accepts(freq.toDouble())) {
             val median = synchronized(recent) {
                 recent.addLast(freq.toDouble())
                 if (recent.size > 3) recent.removeFirst()
                 recent.sorted()[recent.size / 2]
             }
-            val r = NoteMath.analyze(median, _a4.value.toDouble())
+            // Undo whatever constant offset the mic path adds before naming the note.
+            val corrected = median * 2.0.pow(-_calibration.value / 1200.0)
+            val r = NoteMath.analyze(corrected, _a4.value.toDouble())
             if (r != null) {
                 lastGoodAt = now
                 _reading.value = r
@@ -149,15 +167,45 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setCalibration(cents: Float) {
+        val clamped = cents.coerceIn(-30f, 30f)
+        _calibration.value = clamped
+        prefs.edit().putFloat("calibration", clamped).apply()
+    }
+
+    /** Nulls out the current error: whatever is being played becomes dead-on. */
+    fun calibrateFromCurrentReading() {
+        val r = _reading.value ?: return
+        setCalibration(_calibration.value + r.cents.toFloat())
+    }
+
+    fun setInstrument(value: Instrument) {
+        _instrument.value = value
+        prefs.edit().putString("instrument", value.name).apply()
+        synchronized(recent) { recent.clear() }
+    }
+
     /** 변신! Toggles between 초텐짱 (light) and 아메 (dark). */
     fun toggleDark() {
         val next = !_dark.value
         _dark.value = next
         prefs.edit().putBoolean("dark", next).apply()
         blurt(Dialogue.transformLines(next).random(), Sprite.JOY)
+        burstSparkles(20)
     }
 
-    fun pokeCharacter() = blurt(Dialogue.pokeLines(_dark.value).random(), Sprite.SHY)
+    fun pokeCharacter() {
+        blurt(Dialogue.pokeLines(_dark.value).random(), Sprite.SHY)
+        burstSparkles(11)
+    }
+
+    /** Called when the tuner settles on a perfect reading. */
+    fun celebrate() = burstSparkles(13)
+
+    private fun burstSparkles(count: Int) {
+        sparkleId++
+        _sparkle.value = SparkleBurst(sparkleId, count)
+    }
 
     private fun blurt(line: String, sprite: Sprite) {
         _transientLine.value = line

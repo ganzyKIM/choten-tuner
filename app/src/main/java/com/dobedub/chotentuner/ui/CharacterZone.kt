@@ -1,10 +1,5 @@
 package com.dobedub.chotentuner.ui
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,7 +10,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -25,17 +25,35 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dobedub.chotentuner.R
+import com.dobedub.chotentuner.SparkleBurst
 import com.dobedub.chotentuner.Sprite
 import com.dobedub.chotentuner.ui.theme.LocalRetro
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.random.Random
 
 /** Bust artwork is cropped to 400x350. */
 private const val BUST_ASPECT = 400f / 350f
 
 /** How much bigger than a plain fit-to-width the bust is drawn. */
 private const val BUST_ZOOM = 1.15f
+
+private val SPARKLE_SYMBOLS = arrayOf("☆", "★", "✧", "♪", "・")
+
+/** One star in a burst, living out its own little arc. */
+private data class Sparkle(
+    val xFrac: Float,
+    val yFrac: Float,
+    val sizeSp: Float,
+    val symbol: String,
+    val colorIndex: Int,
+    val bornAt: Long,
+    val life: Long,
+    val riseDp: Float,
+    val driftDp: Float,
+)
 
 private fun drawableFor(sprite: Sprite, dark: Boolean): Int = if (dark) {
     when (sprite) {
@@ -57,52 +75,59 @@ private fun drawableFor(sprite: Sprite, dark: Boolean): Int = if (dark) {
     }
 }
 
+/** Scatters a burst in a ring around the character's upper body. */
+private fun newSparkle(seed: Int, bornAt: Long, index: Int, total: Int): Sparkle {
+    val rng = Random(seed * 1000 + index)
+    // Spread evenly around the ring, then jitter so it never looks like a dial.
+    val angle = (2.0 * PI * index / total) + rng.nextDouble(-0.35, 0.35)
+    val radius = rng.nextDouble(0.19, 0.38)
+    return Sparkle(
+        xFrac = (0.5 + cos(angle) * radius).toFloat(),
+        yFrac = (0.44 + sin(angle) * radius * 0.78).toFloat(),
+        sizeSp = rng.nextDouble(11.0, 22.0).toFloat(),
+        symbol = SPARKLE_SYMBOLS[rng.nextInt(SPARKLE_SYMBOLS.size)],
+        colorIndex = rng.nextInt(3),
+        bornAt = bornAt + rng.nextLong(0, 420),
+        life = rng.nextLong(1500, 2600),
+        riseDp = rng.nextDouble(14.0, 40.0).toFloat(),
+        driftDp = rng.nextDouble(-10.0, 10.0).toFloat(),
+    )
+}
+
 /**
- * The mascot area under the main window: her bust peeks up from the bottom of
- * the screen, posed and animated to match what the app is doing.
- * Tapping her makes her talk (through the shared dialogue window).
+ * The mascot area under the main window: her bust sits still at the bottom of
+ * the screen, posed to match what the app is doing, and stars burst around her
+ * when she is poked or transforms.
  */
 @Composable
 fun CharacterZone(
     dark: Boolean,
     sprite: Sprite,
+    burst: SparkleBurst,
     onPoke: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalRetro.current
+    val sparkles = remember { mutableStateListOf<Sparkle>() }
+    var now by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(burst.id) {
+        if (burst.count > 0) {
+            val born = System.currentTimeMillis()
+            repeat(burst.count) { sparkles.add(newSparkle(burst.id, born, it, burst.count)) }
+        }
+        while (sparkles.isNotEmpty()) {
+            withFrameMillis { }
+            val t = System.currentTimeMillis()
+            now = t
+            sparkles.removeAll { t - it.bornAt > it.life }
+        }
+    }
+
     BoxWithConstraints(modifier.clipToBounds()) {
         val fitted = min(maxHeight.value, (maxWidth / BUST_ASPECT).value)
         val bustHeight = (fitted * BUST_ZOOM).dp
         val topPad = (maxHeight - bustHeight).coerceAtLeast(0.dp)
-
-        val transition = rememberInfiniteTransition(label = "chara")
-        val phase by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = (2.0 * PI).toFloat(),
-            animationSpec = infiniteRepeatable(
-                tween(
-                    durationMillis = when (sprite) {
-                        Sprite.JOY -> 1000
-                        Sprite.SHY -> 1400
-                        Sprite.SHARP -> 340
-                        Sprite.FLAT -> 4200
-                        Sprite.DARK -> 3600
-                        Sprite.NEUTRAL -> 3000
-                    },
-                    easing = LinearEasing,
-                ),
-            ),
-            label = "phase",
-        )
-        val bobAmp = when (sprite) {
-            Sprite.JOY -> 6f
-            Sprite.SHY -> 4f
-            Sprite.SHARP -> 1.5f
-            Sprite.FLAT -> 3f
-            Sprite.DARK -> 3f
-            Sprite.NEUTRAL -> 4f
-        }
-        val wobble = if (sprite == Sprite.SHARP) sin(phase) * 1.6f else 0f
 
         val interaction = remember { MutableInteractionSource() }
         Image(
@@ -113,10 +138,6 @@ fun CharacterZone(
                 .padding(top = topPad)
                 .height(bustHeight)
                 .aspectRatio(BUST_ASPECT)
-                .graphicsLayer {
-                    translationY = sin(phase) * bobAmp * density
-                    rotationZ = wobble
-                }
                 .clickable(
                     interactionSource = interaction,
                     indication = null,
@@ -124,28 +145,34 @@ fun CharacterZone(
                 ),
         )
 
-        if (sprite == Sprite.JOY || sprite == Sprite.DARK) {
-            val symbol = if (sprite == Sprite.JOY) "☆" else "♪"
-            val pulse = (sin(phase) + 1f) / 2f
+        val sparkleColors = listOf(palette.pinkDeep, palette.purple, palette.blue)
+        for (s in sparkles) {
+            val age = now - s.bornAt
+            if (age < 0) continue
+            val p = (age.toFloat() / s.life).coerceIn(0f, 1f)
+            // Pop in fast, hold, then drift away.
+            val alpha = when {
+                p < 0.12f -> p / 0.12f
+                p > 0.55f -> ((1f - p) / 0.45f)
+                else -> 1f
+            }.coerceIn(0f, 1f)
+            val scale = 0.55f + 0.45f * (p / 0.22f).coerceAtMost(1f)
             PixelText(
-                symbol,
-                fontSize = 18.sp,
-                color = palette.pinkDeep,
+                s.symbol,
+                fontSize = s.sizeSp.sp,
+                color = sparkleColors[s.colorIndex],
                 bold = true,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(x = (-96).dp, y = topPad + 22.dp)
-                    .alpha(pulse),
-            )
-            PixelText(
-                symbol,
-                fontSize = 14.sp,
-                color = palette.purple,
-                bold = true,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(x = 100.dp, y = topPad + 52.dp)
-                    .alpha(1f - pulse),
+                    .align(Alignment.TopStart)
+                    .offset(
+                        x = maxWidth * s.xFrac + (s.driftDp * p).dp,
+                        y = maxHeight * s.yFrac - (s.riseDp * p).dp,
+                    )
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .alpha(alpha),
             )
         }
 
