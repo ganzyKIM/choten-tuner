@@ -151,11 +151,6 @@ fun ChotenTunerApp(
         settledBucket = bucket
     }
 
-    // Celebrate the moment the note locks in, once per lock.
-    LaunchedEffect(settledBucket) {
-        if (settledBucket == "perfect") vm.celebrate()
-    }
-
     val baseLine = remember(settledBucket, dark) { Dialogue.linesFor(settledBucket, dark).random() }
     val line = transientLine ?: baseLine
     val sprite = transientSprite ?: Dialogue.spriteFor(settledBucket)

@@ -194,13 +194,17 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
         burstSparkles(20)
     }
 
+    private var lastPokeSprite: Sprite? = null
+
+    /** Picks a pose she is not already striking, so every touch visibly changes her. */
     fun pokeCharacter() {
-        blurt(Dialogue.pokeLines(_dark.value).random(), Sprite.SHY)
+        val pool = Dialogue.pokeReactions(_dark.value)
+        val fresh = pool.filter { it.sprite != lastPokeSprite }
+        val pick = (fresh.ifEmpty { pool }).random()
+        lastPokeSprite = pick.sprite
+        blurt(pick.line, pick.sprite)
         burstSparkles(11)
     }
-
-    /** Called when the tuner settles on a perfect reading. */
-    fun celebrate() = burstSparkles(13)
 
     private fun burstSparkles(count: Int) {
         sparkleId++

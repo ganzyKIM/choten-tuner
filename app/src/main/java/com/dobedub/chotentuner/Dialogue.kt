@@ -1,13 +1,15 @@
 package com.dobedub.chotentuner
 
 import com.dobedub.chotentuner.music.NoteReading
-import kotlin.math.abs
 
 /**
  * Which pose the mascot strikes. Each persona maps these to its own artwork
  * (see CharacterZone), so the situation drives the expression for both forms.
  */
 enum class Sprite { NEUTRAL, JOY, SHARP, FLAT, SHY, DARK }
+
+/** A pose paired with the line that goes with it. */
+data class Reaction(val sprite: Sprite, val line: String)
 
 /**
  * All of the mascot's lines and poses. Two personas: the loud angel streamer
@@ -26,7 +28,13 @@ object Dialogue {
         else -> "dark"           // C#, D#, F#, G#, A# — 단음정 + 트라이톤
     }
 
-    /** Stable key describing the current situation; pose and line follow from it. */
+    /**
+     * Stable key describing the current situation; pose and line follow from it.
+     *
+     * While the tuner actually hears something the key stays "tuner_on" no matter
+     * how the pitch moves — the meter reports the deviation, and the mascot
+     * holding one pose keeps her out of the way.
+     */
     fun bucketFor(
         micGranted: Boolean,
         mode: AppMode,
@@ -36,24 +44,15 @@ object Dialogue {
     ): String = when {
         mode == AppMode.TUNER && !micGranted -> "no_perm"
         mode == AppMode.TUNER && reading == null -> "tuner_idle"
-        mode == AppMode.TUNER -> {
-            val c = reading!!.cents
-            when {
-                abs(c) <= 5.0 -> "perfect"
-                c <= -15 -> "low_big"
-                c < 0 -> "low"
-                c >= 15 -> "high_big"
-                else -> "high"
-            }
-        }
+        mode == AppMode.TUNER -> "tuner_on"
         tonePlaying -> "tone_" + toneQuality(toneMidi)
         else -> "tone_idle"
     }
 
     fun spriteFor(bucket: String): Sprite = when (bucket) {
-        "perfect", "tone_bright" -> Sprite.JOY
-        "low", "low_big" -> Sprite.FLAT
-        "high", "high_big", "no_perm" -> Sprite.SHARP
+        "no_perm" -> Sprite.SHARP
+        "tuner_idle" -> Sprite.FLAT
+        "tone_bright" -> Sprite.JOY
         "tone_dark" -> Sprite.DARK
         else -> Sprite.NEUTRAL
     }
@@ -61,7 +60,7 @@ object Dialogue {
     fun linesFor(bucket: String, dark: Boolean): List<String> =
         (if (dark) ame[bucket] else choten[bucket]) ?: listOf("...")
 
-    fun pokeLines(dark: Boolean): List<String> = if (dark) amePoke else chotenPoke
+    fun pokeReactions(dark: Boolean): List<Reaction> = if (dark) amePoke else chotenPoke
 
     fun transformLines(toDark: Boolean): List<String> = if (toDark) toDarkLines else toLightLines
 
@@ -77,32 +76,12 @@ object Dialogue {
             "튜닝 타임! 자신있게 소리내봐~!",
             "귀 쫑긋 세우고 대기중이야! 언제든 오케이~",
         ),
-        "low_big" to listOf(
-            "삐용삐용! 많이 낮아~ 팍 감아올려!",
-            "으엥, 한참 낮잖아! 힘내라 P!",
-            "너무 낮아!! 지하실까지 내려갔어~!",
-        ),
-        "low" to listOf(
-            "쪼~금 낮아! 살짝만 올려봐~",
-            "아깝다! 요만~큼만 위로!",
-            "거의 다 왔어! 아주 살짝 올려~",
-        ),
-        "high" to listOf(
-            "쪼~금 높아! 살짝만 내려봐~",
-            "아깝! 요만~큼만 아래로!",
-            "다 왔는데! 아주 조금만 내려봐~",
-        ),
-        "high_big" to listOf(
-            "꺄앗! 너무 높아!! 풀어줘 풀어줘~!",
-            "높아높아! 살살 풀어보자~",
-            "우주까지 날아갔어! 진정해 P!",
-        ),
-        "perfect" to listOf(
-            "완벽해--☆ 역시 P는 천재야!",
-            "딱 맞췄어! 천사 인증~☆",
-            "그거야 그거!! 최고의 소리잖아?!",
-            "짜자잔-! 완벽한 음정 완성~!",
-            "우와아! 소름돋았어! 이게 프로구나~☆",
+        "tuner_on" to listOf(
+            "듣고 있어~ 천천히 맞춰봐!",
+            "오케이 오케이! 미터기 보면서 조율해~☆",
+            "초텐짱이 집중해서 듣는 중~ ♪",
+            "소리 잡았다! 이제 P의 손끝에 달렸어~",
+            "조용히 있어줄게. 편하게 맞춰봐~",
         ),
         "tone_idle" to listOf(
             "듣고 싶은 음 눌러봐! 바로 내줄게~",
@@ -136,26 +115,11 @@ object Dialogue {
             "연주해 줘. ...기다릴게.",
             "...조용하네. 나쁘지 않지만.",
         ),
-        "low_big" to listOf(
-            "많이 낮아. ...더 감아.",
-            "한참 낮아. ...제대로 좀 해.",
-        ),
-        "low" to listOf(
-            "...조금 낮아. 올려봐.",
-            "아깝네. ...조금만 더.",
-        ),
-        "high" to listOf(
-            "...조금 높아. 내려봐.",
-            "거의 다 왔어. ...살짝만.",
-        ),
-        "high_big" to listOf(
-            "너무 높아. ...풀어줘.",
-            "그렇게 조이면... 끊어져 버려.",
-        ),
-        "perfect" to listOf(
-            "...딱 맞아. 대단하네, P.",
-            "완벽. ...조금 감동했어.",
-            "...이런 소리, 계속 듣고 싶어.",
+        "tuner_on" to listOf(
+            "...듣고 있어. 천천히 해.",
+            "소리, 잡았어. ...서두르지 마.",
+            "...방해 안 할게. 계속해.",
+            "괜찮아. ...끝까지 봐줄 테니까.",
         ),
         "tone_idle" to listOf(
             "...원하는 음, 눌러.",
@@ -176,21 +140,34 @@ object Dialogue {
         ),
     )
 
+    /** Poking her cycles through every pose she has, each with its own line. */
     private val chotenPoke = listOf(
-        "꺄앗! 갑자기 만지면 부끄럽잖아~!",
-        "승인욕구 충전 완료--☆ 고마워 P!",
-        "P~ 나 귀엽지? 솔직해도 돼!",
-        "머리 쓰다듬는 거야? 에헤헤~",
-        "구독 좋아요 알림설정! ...아, 여긴 앱이었지?",
-        "에헤헤~ 더 해줘도 되는데~?",
+        Reaction(Sprite.SHY, "꺄앗! 갑자기 만지면 부끄럽잖아~!"),
+        Reaction(Sprite.SHY, "머리 쓰다듬는 거야? 에헤헤~"),
+        Reaction(Sprite.SHY, "에헤헤~ 더 해줘도 되는데~?"),
+        Reaction(Sprite.JOY, "승인욕구 충전 완료--☆ 고마워 P!"),
+        Reaction(Sprite.JOY, "P~ 나 귀엽지? 솔직해도 돼!"),
+        Reaction(Sprite.JOY, "브이~☆ 사진이라도 찍어줄 거야?"),
+        Reaction(Sprite.SHARP, "히익! 놀랐잖아~! 심장 떨어질 뻔했어!"),
+        Reaction(Sprite.SHARP, "야야야! 머리 헝클어진다구~!"),
+        Reaction(Sprite.FLAT, "음~? 왜 불렀어? 나 쉬는 중인데~"),
+        Reaction(Sprite.FLAT, "지금은 힐링 타임이라구~ 조금만 기다려~"),
+        Reaction(Sprite.NEUTRAL, "응? 무슨 일이야 P?"),
+        Reaction(Sprite.NEUTRAL, "부르셨습니까~ 초텐짱 대기중!"),
     )
 
     private val amePoke = listOf(
-        "...뭐야, 갑자기.",
-        "만지지 마. ...조금은 괜찮지만.",
-        "...P는 이상해. (싫지 않아)",
-        "지금은 이 모습이 편해.",
-        "...따뜻하네. 조금만 더 있어줘.",
+        Reaction(Sprite.SHY, "...뭐야, 갑자기."),
+        Reaction(Sprite.SHY, "만지지 마. ...조금은 괜찮지만."),
+        Reaction(Sprite.SHY, "...따뜻하네. 조금만 더 있어줘."),
+        Reaction(Sprite.DARK, "...한 알 줄까? 농담이야."),
+        Reaction(Sprite.DARK, "머리가 몽롱해... 네 탓이야."),
+        Reaction(Sprite.FLAT, "...연기 마시지 마. 몸에 나빠."),
+        Reaction(Sprite.FLAT, "쉬는 중이야. ...옆에 있어도 돼."),
+        Reaction(Sprite.SHARP, "...계속 만지면, 못 놓아줄지도."),
+        Reaction(Sprite.SHARP, "도망갈 생각은... 하지 마."),
+        Reaction(Sprite.NEUTRAL, "...왜."),
+        Reaction(Sprite.NEUTRAL, "...보고 있었어. 계속."),
     )
 
     private val toDarkLines = listOf(
