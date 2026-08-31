@@ -139,6 +139,7 @@ fun ChotenTunerApp(
     val sparkle by vm.sparkle.collectAsState()
     val instrument by vm.instrument.collectAsState()
     val calibration by vm.calibration.collectAsState()
+    val sensitivity by vm.sensitivity.collectAsState()
 
     val r = reading
     val bucket = Dialogue.bucketFor(micGranted, mode, r, tonePlaying, toneMidi)
@@ -254,11 +255,14 @@ fun ChotenTunerApp(
                 a4 = a4,
                 calibration = calibration,
                 instrument = instrument,
+                sensitivity = sensitivity,
+                inputLevel = vm.inputLevel,
                 canCalibrateNow = r != null,
                 onA4 = vm::setA4,
                 onCalibration = vm::setCalibration,
                 onCalibrateNow = vm::calibrateFromCurrentReading,
                 onInstrument = vm::setInstrument,
+                onSensitivity = vm::setSensitivity,
                 onClose = { vm.openSettings(false) },
             )
         }

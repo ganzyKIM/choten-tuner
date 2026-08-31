@@ -2,6 +2,7 @@ package com.dobedub.chotentuner.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,20 +31,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import com.dobedub.chotentuner.audio.TunerEngine
 import com.dobedub.chotentuner.music.Instrument
 import com.dobedub.chotentuner.ui.theme.LocalRetro
 import java.util.Locale
+import kotlin.math.log10
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun SettingsOverlay(
     a4: Int,
     calibration: Float,
     instrument: Instrument,
+    sensitivity: Int,
+    inputLevel: StateFlow<Float>,
     canCalibrateNow: Boolean,
     onA4: (Int) -> Unit,
     onCalibration: (Float) -> Unit,
     onCalibrateNow: () -> Unit,
     onInstrument: (Instrument) -> Unit,
+    onSensitivity: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
     val palette = LocalRetro.current
@@ -119,6 +131,28 @@ fun SettingsOverlay(
 
                 Divider()
 
+                PixelText("마이크 민감도", fontSize = 13.sp, bold = true)
+                Spacer(Modifier.height(4.dp))
+                PixelText(
+                    "숫자가 클수록 작은 소리까지 잡아!\n주변이 시끄러우면 낮춰줘~",
+                    fontSize = 9.sp,
+                    color = palette.textMuted,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 15.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Stepper(
+                    value = "$sensitivity / ${TunerEngine.MAX_SENSITIVITY}",
+                    canDecrease = sensitivity > TunerEngine.MIN_SENSITIVITY,
+                    canIncrease = sensitivity < TunerEngine.MAX_SENSITIVITY,
+                    onDecrease = { onSensitivity(sensitivity - 1) },
+                    onIncrease = { onSensitivity(sensitivity + 1) },
+                )
+                Spacer(Modifier.height(10.dp))
+                InputLevelBar(inputLevel, TunerEngine.rmsGateFor(sensitivity))
+
+                Divider()
+
                 PixelText("기준음 A4 보정", fontSize = 13.sp, bold = true)
                 Spacer(Modifier.height(8.dp))
                 Stepper(
@@ -171,6 +205,7 @@ fun SettingsOverlay(
                     onClick = {
                         onA4(440)
                         onCalibration(0f)
+                        onSensitivity(TunerEngine.DEFAULT_SENSITIVITY)
                     },
                     background = palette.blue,
                 ) {
@@ -181,6 +216,53 @@ fun SettingsOverlay(
                 PixelText("초텐짱의 비밀 설정창~☆", fontSize = 9.sp, color = palette.textMuted)
             }
         }
+    }
+}
+
+/** dBFS position of an RMS value on a -60..0 dB scale, as a 0..1 fraction. */
+private fun levelFraction(rms: Float): Float {
+    val db = 20f * log10(rms.coerceAtLeast(1e-6f))
+    return ((db + 60f) / 60f).coerceIn(0f, 1f)
+}
+
+/**
+ * Live mic meter with the silence gate marked, so the 민감도 number can be
+ * chosen against what the microphone is actually picking up.
+ */
+@Composable
+private fun InputLevelBar(levelFlow: StateFlow<Float>, gate: Float) {
+    val palette = LocalRetro.current
+    val rms by levelFlow.collectAsState()
+    val level = levelFraction(rms)
+    val gateAt = levelFraction(gate)
+    val passing = rms >= gate
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .background(palette.panel)
+                .border(2.dp, palette.border)
+        ) {
+            drawRect(
+                color = if (passing) palette.mintDeep else palette.textMuted,
+                size = Size(size.width * level, size.height),
+            )
+            // The gate: everything left of this line is treated as silence.
+            drawRect(
+                color = palette.pinkDeep,
+                topLeft = Offset(size.width * gateAt - 1.5.dp.toPx(), 0f),
+                size = Size(3.dp.toPx(), size.height),
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        PixelText(
+            if (passing) "입력 감지중! ♪" else "감지 기준(분홍선)을 넘겨야 반응해~",
+            fontSize = 9.sp,
+            color = if (passing) palette.mintDeep else palette.textMuted,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

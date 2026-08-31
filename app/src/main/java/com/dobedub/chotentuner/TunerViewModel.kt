@@ -43,6 +43,16 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
     private val _instrument = MutableStateFlow(Instrument.fromName(prefs.getString("instrument", null)))
     val instrument: StateFlow<Instrument> = _instrument.asStateFlow()
 
+    /** How quiet a sound may be and still be analysed (1 = deafest, 10 = most sensitive). */
+    private val _sensitivity = MutableStateFlow(
+        prefs.getInt("sensitivity", TunerEngine.DEFAULT_SENSITIVITY)
+    )
+    val sensitivity: StateFlow<Int> = _sensitivity.asStateFlow()
+
+    /** Live mic level (RMS) so the settings screen can show what the gate is cutting. */
+    private val _inputLevel = MutableStateFlow(0f)
+    val inputLevel: StateFlow<Float> = _inputLevel.asStateFlow()
+
     private val _dark = MutableStateFlow(prefs.getBoolean("dark", false))
     val dark: StateFlow<Boolean> = _dark.asStateFlow()
 
@@ -71,7 +81,9 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
 
     private var blurtJob: Job? = null
 
-    private val engine = TunerEngine(app)
+    private val engine = TunerEngine(app).apply {
+        silenceRms = TunerEngine.rmsGateFor(_sensitivity.value)
+    }
     private val player = TonePlayer()
 
     // Median-of-3 smoothing plus a short hold so the display doesn't flicker.
@@ -95,10 +107,12 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
     fun stopTuner() {
         engine.stop()
         _reading.value = null
+        _inputLevel.value = 0f
         synchronized(recent) { recent.clear() }
     }
 
-    private fun onPitch(freq: Float) {
+    private fun onPitch(freq: Float, rms: Float) {
+        _inputLevel.value = rms
         val now = System.currentTimeMillis()
         if (freq > 0 && _instrument.value.accepts(freq.toDouble())) {
             val median = synchronized(recent) {
@@ -165,6 +179,13 @@ class TunerViewModel(app: Application) : AndroidViewModel(app) {
         if (_tonePlaying.value) {
             player.setFrequency(NoteMath.midiToFrequency(_toneMidi.value, clamped.toDouble()))
         }
+    }
+
+    fun setSensitivity(level: Int) {
+        val clamped = level.coerceIn(TunerEngine.MIN_SENSITIVITY, TunerEngine.MAX_SENSITIVITY)
+        _sensitivity.value = clamped
+        engine.silenceRms = TunerEngine.rmsGateFor(clamped)
+        prefs.edit().putInt("sensitivity", clamped).apply()
     }
 
     fun setCalibration(cents: Float) {

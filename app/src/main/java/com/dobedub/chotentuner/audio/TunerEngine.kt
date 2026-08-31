@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -20,8 +21,12 @@ class TunerEngine(
     private val hopSize: Int = 2048,
 ) {
 
-    /** RMS below this is treated as silence (~-46 dBFS). */
-    private val silenceRms = 0.005f
+    /**
+     * RMS below this counts as silence. Driven by the 민감도 setting so a quiet
+     * instrument in a loud room can be dialled in either direction.
+     */
+    @Volatile
+    var silenceRms: Float = rmsGateFor(DEFAULT_SENSITIVITY)
 
     private var thread: Thread? = null
     @Volatile private var running = false
@@ -69,9 +74,10 @@ class TunerEngine(
 
     /**
      * Starts capturing. [onResult] is called from the audio thread with the
-     * detected frequency in Hz, or -1f for silence / no clear pitch.
+     * detected frequency in Hz (-1f for silence / no clear pitch) and the
+     * window's RMS level, which the settings screen shows as an input meter.
      */
-    fun start(onResult: (frequencyHz: Float) -> Unit) {
+    fun start(onResult: (frequencyHz: Float, rms: Float) -> Unit) {
         if (running) return
         running = true
         thread = Thread {
@@ -114,9 +120,9 @@ class TunerEngine(
                     for (s in window) sum += s * s
                     val rms = sqrt(sum / windowSize)
                     if (rms < silenceRms) {
-                        onResult(-1f)
+                        onResult(-1f, rms)
                     } else {
-                        onResult(detector.detect(window))
+                        onResult(detector.detect(window), rms)
                     }
                 }
             } catch (_: InterruptedException) {
@@ -140,5 +146,21 @@ class TunerEngine(
         thread?.interrupt()
         thread?.join(500)
         thread = null
+    }
+
+    companion object {
+        const val MIN_SENSITIVITY = 1
+        const val MAX_SENSITIVITY = 10
+        const val DEFAULT_SENSITIVITY = 6
+
+        private const val QUIETEST_GATE = 0.001f  // ~-60 dBFS, hears almost anything
+        private const val LOUDEST_GATE = 0.03f    // ~-30 dBFS, ignores room noise
+
+        /** Maps a 민감도 level onto the RMS gate; higher level = hears quieter sounds. */
+        fun rmsGateFor(level: Int): Float {
+            val t = (level.coerceIn(MIN_SENSITIVITY, MAX_SENSITIVITY) - MIN_SENSITIVITY)
+                .toFloat() / (MAX_SENSITIVITY - MIN_SENSITIVITY)
+            return LOUDEST_GATE * (QUIETEST_GATE / LOUDEST_GATE).pow(t)
+        }
     }
 }
